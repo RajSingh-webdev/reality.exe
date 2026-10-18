@@ -24,7 +24,7 @@ import type {
   Sprite,
   WebGLProgramParametersWithUniforms,
 } from 'three'
-import { JudgeLanding } from './JudgeLanding'
+import { LandingPage } from './LandingPage'
 import { normalizePlanetName, parseRealityCommand } from './commands'
 import type { RealityCommand } from './commands'
 import {
@@ -1210,7 +1210,35 @@ function CommandConsole({
 }
 
 function App() {
-  const [showLanding, setShowLanding] = useState(true)
+  const [showLanding, setShowLanding] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.hash !== '#universe' && !window.location.search.includes('play=1')
+    }
+    return true
+  })
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setShowLanding(window.location.hash !== '#universe' && !window.location.search.includes('play=1'))
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
+
+  const enterUniverse = () => {
+    if (typeof window !== 'undefined') {
+      window.location.hash = 'universe'
+    }
+    setShowLanding(false)
+  }
+
+  const exitToLanding = () => {
+    if (typeof window !== 'undefined') {
+      window.location.hash = ''
+    }
+    setShowLanding(true)
+  }
+
   const [world] = useState(createPhysicsWorld)
   const [settings, setSettings] = useState(INITIAL_SETTINGS)
   const settingsRef = useRef(settings)
@@ -1663,11 +1691,11 @@ function App() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => setShowLanding(true)}
-            className="judge-header-btn"
-            title="Open Judge Briefing & Controls Dossier"
+            onClick={exitToLanding}
+            className="landing-overview-btn"
+            title="Return to Landing Page & Briefing"
           >
-            <span>?</span> JUDGE GUIDE
+            <span>←</span> BRIEFING / OVERVIEW
           </button>
           <div className="status font-mono text-[9px] tracking-[0.18em] sm:text-[10px]">
             <span className="status-light" aria-hidden="true" />
@@ -1731,7 +1759,7 @@ function App() {
           Numerical instability detected. The universe was restored to initial conditions and paused; review gravity and speed settings before resuming.
         </div>
       )}
-      {showLanding && <JudgeLanding onEnter={() => setShowLanding(false)} />}
+      {showLanding && <LandingPage onEnter={enterUniverse} />}
     </main>
   )
 }
