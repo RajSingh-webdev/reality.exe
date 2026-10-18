@@ -309,6 +309,37 @@ body {
   padding-right: 3px;
 }
 
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2px 0 5px;
+  color: #7185a2;
+  font-size: 7px;
+  letter-spacing: 0.1em;
+}
+
+.history-toolbar button {
+  padding: 3px 6px;
+  border: 1px solid rgb(115 151 202 / 20%);
+  border-radius: 2px;
+  color: #9fb5d2;
+  background: rgb(4 8 15 / 65%);
+  font-family: inherit;
+  font-size: 7px;
+  cursor: pointer;
+}
+
+.history-toolbar button:hover:not(:disabled) {
+  border-color: rgb(105 213 255 / 45%);
+  color: #dff5ff;
+}
+
+.history-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .console-empty {
   margin: 4px 0 0;
   color: #7185a2;
@@ -321,6 +352,7 @@ body {
   background: rgb(4 8 15 / 55%);
   font-size: 8px;
   line-height: 1.45;
+  animation: command-arrive 180ms ease-out both;
 }
 
 .command-entry.is-success {
@@ -329,6 +361,10 @@ body {
 
 .command-entry.is-error {
   border-left-color: #ff806d;
+}
+
+.command-entry.is-warning {
+  border-left-color: #f3c76b;
 }
 
 .command-entry-input,
@@ -356,6 +392,31 @@ body {
 
 .command-entry.is-error .command-entry-result {
   color: #ffad99;
+}
+
+.command-entry.is-warning .command-entry-result {
+  color: #f0d18b;
+}
+
+.console-status.is-warning {
+  color: #f3c76b;
+}
+
+.console-status.is-warning > span {
+  background: #f3c76b;
+  box-shadow: 0 0 8px rgb(243 199 107 / 70%);
+}
+
+@keyframes command-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .panel-heading {
@@ -386,6 +447,35 @@ body {
   border-radius: 50%;
   background: #74f5c0;
   box-shadow: 0 0 9px rgb(116 245 192 / 70%);
+}
+
+.camera-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin: -7px 0 12px;
+}
+
+.camera-actions button,
+.focus-button {
+  min-height: 27px;
+  padding: 0 5px;
+  border: 1px solid rgb(115 151 202 / 20%);
+  border-radius: 2px;
+  color: #9fb5d2;
+  background: rgb(4 8 15 / 76%);
+  font-family: inherit;
+  font-size: 7px;
+  letter-spacing: 0.045em;
+  cursor: pointer;
+}
+
+.camera-actions button:hover,
+.camera-actions button.is-active,
+.focus-button:hover {
+  border-color: rgb(105 213 255 / 45%);
+  color: #dff5ff;
+  background: rgb(52 132 189 / 18%);
 }
 
 .control-group {
@@ -629,6 +719,12 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.focus-button {
+  width: 100%;
+  margin-top: 12px;
+  color: #9de2ff;
+}
+
 .impulse-button {
   margin-top: 14px;
   color: #9de2ff;
@@ -688,6 +784,47 @@ body {
   font-family: ui-monospace, monospace;
   font-size: 10px;
   line-height: 1.5;
+}
+
+.demo-banner {
+  position: absolute;
+  z-index: 13;
+  top: 112px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(620px, calc(100vw - 36px));
+  padding: 10px 12px;
+  transform: translateX(-50%);
+  border: 1px solid rgb(105 213 255 / 32%);
+  border-radius: 2px;
+  background: rgb(7 12 22 / 88%);
+  box-shadow: 0 0 28px rgb(59 153 208 / 10%);
+  color: #c9d9ed;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  backdrop-filter: blur(14px);
+}
+
+.demo-banner-label {
+  flex: 0 0 auto;
+  color: #8edbff;
+  font-size: 7px;
+  letter-spacing: 0.12em;
+}
+
+.demo-banner button {
+  flex: 0 0 auto;
+  padding: 5px 7px;
+  border: 1px solid rgb(255 116 91 / 38%);
+  border-radius: 2px;
+  color: #ffc09f;
+  background: rgb(71 28 27 / 30%);
+  font-family: inherit;
+  font-size: 7px;
+  cursor: pointer;
 }
 
 @media (max-width: 560px) {
@@ -764,5 +901,17 @@ body {
     top: 86px;
     left: 12px;
     transform: none;
+  }
+
+  .demo-banner {
+    top: 145px;
+    gap: 7px;
+    width: calc(100vw - 24px);
+    max-width: none;
+    flex-wrap: wrap;
+    left: 12px;
+    transform: none;
+    padding: 8px;
+    font-size: 8px;
   }
 }

@@ -12,8 +12,10 @@ import {
   Line,
   LineBasicMaterial,
   MeshBasicMaterial,
+  Vector3,
 } from 'three'
 import type { FormEvent, RefObject } from 'react'
+import type { ComponentRef } from 'react'
 import type {
   BufferAttribute,
   Group,
@@ -68,6 +70,11 @@ interface PlanetSnapshot {
   horizonRadius?: number
 }
 
+interface CameraRequest {
+  version: number
+  objectId: string | null
+}
+
 interface PlanetTrail {
   geometry: BufferGeometry
   line: ThreeLine<BufferGeometry, LineBasicMaterial>
@@ -91,6 +98,7 @@ interface SimulationEffect {
   position: Vector3Tuple
   particles: Particle[]
   age: number
+  color: Color
 }
 
 interface EffectStore {
@@ -106,34 +114,57 @@ interface CommandHistoryEntry {
   id: number
   command: string
   success: boolean
+  warning?: boolean
   message: string
 }
 
 interface CommandResult {
   success: boolean
   message: string
+  warning?: boolean
 }
 
-function addBurst(store: EffectStore, position: Vector3Tuple, count = 480) {
-  const particleCount = Math.min(count, MAX_PARTICLES)
+function addBurst(
+  store: EffectStore,
+  position: Vector3Tuple,
+  count = 480,
+  inheritedVelocity: Vector3Tuple = [0, 0, 0],
+  sourceColor = '#9deaff',
+) {
+  const activeParticles = store.effects.reduce((total, effect) => total + effect.particles.length, 0)
+  const particleCount = Math.min(count, Math.max(0, MAX_PARTICLES - activeParticles))
+  if (particleCount === 0) return
+  const color = new Color(sourceColor)
   const particles = Array.from({ length: particleCount }, () => {
     const z = Math.random() * 2 - 1
     const angle = Math.random() * Math.PI * 2
     const horizontal = Math.sqrt(1 - z * z)
     const speed = 0.55 + Math.random() * 2.7
+    const fragmentRadius = 0.12 + Math.random() * 0.38
+    const highlight = new Color(['#77dfff', '#e1a6ff', '#ffb66e', '#ffffff'][Math.floor(Math.random() * 4)])
     return {
-      position: [...position] as Vector3Tuple,
+      position: [
+        position[0] + Math.cos(angle) * horizontal * fragmentRadius,
+        position[1] + z * fragmentRadius,
+        position[2] + Math.sin(angle) * horizontal * fragmentRadius,
+      ] as Vector3Tuple,
       velocity: [
-        Math.cos(angle) * horizontal * speed,
-        z * speed,
-        Math.sin(angle) * horizontal * speed,
+        Math.cos(angle) * horizontal * speed + inheritedVelocity[0] * 0.32,
+        z * speed + inheritedVelocity[1] * 0.32,
+        Math.sin(angle) * horizontal * speed + inheritedVelocity[2] * 0.32,
       ] as Vector3Tuple,
       age: 0,
-      lifetime: 1.4 + Math.random() * 1.8,
-      color: new Color(['#77dfff', '#e1a6ff', '#ffb66e', '#ffffff'][Math.floor(Math.random() * 4)]),
+      lifetime: 4.5 + Math.random() * 2.5,
+      color: color.clone().lerp(highlight, Math.random() * 0.38),
     }
   })
-  store.effects.push({ id: store.nextId++, position: [...position], particles, age: 0 })
+  store.effects.push({
+    id: store.nextId++,
+    position: [...position],
+    particles,
+    age: 0,
+    color: color.clone().lerp(new Color('#d9f7ff'), 0.55),
+  })
   while (
     store.effects.reduce((total, effect) => total + effect.particles.length, 0) > MAX_PARTICLES
   ) {
@@ -160,9 +191,11 @@ function addPlanetSurface(shader: WebGLProgramParametersWithUniforms) {
 }
 
 function Starfield() {
-  const geometry = useMemo(() => {
+  const geometries = useMemo(() => {
     const positions = new Float32Array(1800 * 3)
     const colors = new Float32Array(1800 * 3)
+    const nearPositions = new Float32Array(520 * 3)
+    const nearColors = new Float32Array(520 * 3)
     let seed = 24301
     const random = () => {
       seed = (seed * 1664525 + 1013904223) % 4294967296
@@ -188,20 +221,61 @@ function Starfield() {
     const stars = new BufferGeometry()
     stars.setAttribute('position', new Float32BufferAttribute(positions, 3))
     stars.setAttribute('color', new Float32BufferAttribute(colors, 3))
-    return stars
+    for (let i = 0; i < 520; i += 1) {
+      const radius = 14 + random() * 23
+      const theta = random() * Math.PI * 2
+      const vertical = random() * 2 - 1
+      const horizontal = Math.sqrt(1 - vertical * vertical)
+      nearPositions[i * 3] = Math.cos(theta) * horizontal * radius
+      nearPositions[i * 3 + 1] = vertical * radius
+      nearPositions[i * 3 + 2] = Math.sin(theta) * horizontal * radius
+      const tint = random() > 0.76 ? new Color('#ffcfaa') : new Color('#b9dfff')
+      const brightness = 0.16 + random() * 0.42
+      nearColors[i * 3] = tint.r * brightness
+      nearColors[i * 3 + 1] = tint.g * brightness
+      nearColors[i * 3 + 2] = tint.b * brightness
+    }
+    const nearStars = new BufferGeometry()
+    nearStars.setAttribute('position', new Float32BufferAttribute(nearPositions, 3))
+    nearStars.setAttribute('color', new Float32BufferAttribute(nearColors, 3))
+    return [stars, nearStars]
   }, [])
 
+  const nebulaTexture = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 128
+    canvas.height = 128
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Unable to create the nebula texture.')
+    const gradient = context.createRadialGradient(64, 64, 3, 64, 64, 64)
+    gradient.addColorStop(0, 'rgba(130, 105, 255, 0.18)')
+    gradient.addColorStop(0.45, 'rgba(54, 130, 221, 0.08)')
+    gradient.addColorStop(1, 'rgba(28, 54, 110, 0)')
+    context.fillStyle = gradient
+    context.fillRect(0, 0, 128, 128)
+    return new CanvasTexture(canvas)
+  }, [])
+
+  useEffect(() => () => {
+    geometries.forEach((geometry) => geometry.dispose())
+    nebulaTexture.dispose()
+  }, [geometries, nebulaTexture])
+
   return (
-    <points geometry={geometry} frustumCulled={false}>
-      <pointsMaterial
-        size={0.09}
-        sizeAttenuation
-        vertexColors
-        transparent
-        opacity={0.9}
-        depthWrite={false}
-      />
-    </points>
+    <>
+      <points geometry={geometries[0]} frustumCulled={false}>
+        <pointsMaterial size={0.09} sizeAttenuation vertexColors transparent opacity={0.9} depthWrite={false} />
+      </points>
+      <points geometry={geometries[1]} frustumCulled={false}>
+        <pointsMaterial size={0.055} sizeAttenuation vertexColors transparent opacity={0.8} depthWrite={false} />
+      </points>
+      <sprite position={[-15, 8, -28]} scale={[27, 13, 1]}>
+        <spriteMaterial map={nebulaTexture} color="#7598ff" transparent opacity={0.65} depthWrite={false} />
+      </sprite>
+      <sprite position={[18, -9, -35]} scale={[31, 15, 1]}>
+        <spriteMaterial map={nebulaTexture} color="#54c7d7" transparent opacity={0.44} depthWrite={false} />
+      </sprite>
+    </>
   )
 }
 
@@ -346,16 +420,16 @@ function Shockwave({ effect }: { effect: SimulationEffect }) {
 
   useFrame(() => {
     if (!ring.current) return
-    const progress = Math.min(effect.age / 1.15, 1)
-    ring.current.scale.setScalar(0.25 + progress * 3.1)
+    const progress = Math.min(effect.age / 2.8, 1)
+    ring.current.scale.setScalar(0.65 + progress * 4.2)
     ;(ring.current.material as MeshBasicMaterial).opacity = (1 - progress) * 0.68
   })
 
   return (
     <mesh ref={ring} position={effect.position} rotation={[Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[0.94, 1, 64]} />
+      <ringGeometry args={[0.72, 1, 96]} />
       <meshBasicMaterial
-        color="#9deaff"
+        color={effect.color}
         transparent
         opacity={0.68}
         depthWrite={false}
@@ -381,8 +455,25 @@ function ParticleRenderer({
     buffer.setAttribute('color', new Float32BufferAttribute(MAX_PARTICLES * 3, 3))
     return buffer
   }, [])
+  const particleTexture = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 32
+    canvas.height = 32
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Unable to create the particle glow texture.')
+    const gradient = context.createRadialGradient(16, 16, 1, 16, 16, 16)
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)')
+    gradient.addColorStop(0.32, 'rgba(255, 255, 255, 0.72)')
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    context.fillStyle = gradient
+    context.fillRect(0, 0, 32, 32)
+    return new CanvasTexture(canvas)
+  }, [])
 
-  useEffect(() => () => geometry.dispose(), [geometry])
+  useEffect(() => () => {
+    geometry.dispose()
+    particleTexture.dispose()
+  }, [geometry, particleTexture])
 
   useFrame((_, frameDelta) => {
     const step = settingsRef.current.paused
@@ -413,7 +504,7 @@ function ParticleRenderer({
 
     let expired = false
     for (let i = effects.effects.length - 1; i >= 0; i -= 1) {
-      if (effects.effects[i].age > 3.2) {
+      if (effects.effects[i].age > 7.05) {
         effects.effects.splice(i, 1)
         expired = true
       }
@@ -425,7 +516,8 @@ function ParticleRenderer({
     <>
       <points ref={points} geometry={geometry} frustumCulled={false}>
         <pointsMaterial
-          size={0.085}
+          map={particleTexture}
+          size={0.16}
           sizeAttenuation
           vertexColors
           transparent
@@ -442,9 +534,11 @@ function ParticleRenderer({
 
 function BlackHoleVisual({
   blackHole,
+  selected,
   onSelect,
 }: {
   blackHole: BlackHole
+  selected: boolean
   onSelect: (id: string) => void
 }) {
   const disk = useRef<Group>(null)
@@ -462,6 +556,19 @@ function BlackHoleVisual({
         <sphereGeometry args={[blackHole.horizonRadius, 40, 40]} />
         <meshBasicMaterial color="#010207" />
       </mesh>
+      {selected && (
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[blackHole.horizonRadius * 0.94, blackHole.horizonRadius, 72]} />
+          <meshBasicMaterial
+            color="#8de8ff"
+            transparent
+            opacity={0.34}
+            side={DoubleSide}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+      )}
       <group ref={disk}>
         <mesh rotation={[Math.PI / 2.4, 0.12, 0]}>
           <torusGeometry args={[blackHole.horizonRadius * 1.8, 0.055, 10, 96]} />
@@ -481,6 +588,7 @@ function SolarSystem({
   world,
   settingsRef,
   selectedId,
+  cameraRequest,
   bodyVersion,
   effects,
   worldVersion,
@@ -498,6 +606,7 @@ function SolarSystem({
   world: PhysicsWorld
   settingsRef: RefObject<SimulationSettings>
   selectedId: string | null
+  cameraRequest: CameraRequest
   bodyVersion: number
   effects: EffectStore
   worldVersion: number
@@ -517,6 +626,10 @@ function SolarSystem({
   const accumulator = useRef(0)
   const snapshotElapsed = useRef(0)
   const chaosElapsed = useRef(0)
+  const controls = useRef<ComponentRef<typeof OrbitControls>>(null)
+  const focusTarget = useRef(new Vector3())
+  const focusFrames = useRef(0)
+  const lastCameraRequest = useRef(cameraRequest.version)
   const lastResetVersion = useRef(world.resetVersion)
   void worldVersion
   const trails = useMemo(
@@ -532,6 +645,21 @@ function SolarSystem({
   }, [trails])
 
   useFrame((_, frameDelta) => {
+    if (lastCameraRequest.current !== cameraRequest.version) {
+      lastCameraRequest.current = cameraRequest.version
+      const body = world.bodies.find((candidate) => candidate.id === cameraRequest.objectId)
+      const blackHole = world.blackHoles.find((candidate) => candidate.id === cameraRequest.objectId)
+      const target = body?.position ?? blackHole?.position ?? [0, 0, 0]
+      focusTarget.current.set(target[0], target[1], target[2])
+      focusFrames.current = 1.1
+    }
+    if (focusFrames.current > 0 && controls.current) {
+      const focusDelta = Math.min(Math.max(frameDelta, 0), MAX_FRAME_DELTA)
+      controls.current.target.lerp(focusTarget.current, 1 - Math.exp(-focusDelta * 3.2))
+      controls.current.update()
+      focusFrames.current = Math.max(0, focusFrames.current - focusDelta)
+    }
+
     const resetOccurred = lastResetVersion.current !== world.resetVersion
     if (resetOccurred) {
       lastResetVersion.current = world.resetVersion
@@ -665,6 +793,17 @@ function SolarSystem({
                 onBeforeCompile={addPlanetSurface}
               />
             </mesh>
+            <mesh scale={1.045}>
+              <sphereGeometry args={[body.size, 24, 24]} />
+              <meshBasicMaterial
+                color={body.color}
+                side={DoubleSide}
+                transparent
+                opacity={selectedId === body.id ? 0.16 : 0.07}
+                blending={AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
             {body.ringed && (
               <mesh rotation={[Math.PI / 2.15, 0, 0]}>
                 <ringGeometry args={[body.size * 1.35, body.size * 2.05, 64]} />
@@ -684,7 +823,12 @@ function SolarSystem({
         </group>
       ))}
       {world.blackHoles.map((blackHole) => (
-        <BlackHoleVisual key={blackHole.id} blackHole={blackHole} onSelect={onSelect} />
+        <BlackHoleVisual
+          key={blackHole.id}
+          blackHole={blackHole}
+          selected={selectedId === blackHole.id}
+          onSelect={onSelect}
+        />
       ))}
       <ParticleRenderer effects={effects} settingsRef={settingsRef} onEffectsChanged={onEffectsChanged} />
       {placementMode && (
@@ -701,6 +845,7 @@ function SolarSystem({
         </mesh>
       )}
       <OrbitControls
+        ref={controls}
         makeDefault
         target={[0, 0, 0]}
         enableDamping
@@ -721,23 +866,29 @@ function PhysicsPanel({
   blackHoleCount,
   placementMode,
   chaosActive,
+  demoActive,
   onChange,
   onReset,
   onSpawn,
   onCreateBlackHole,
   onPlacementToggle,
   onChaosToggle,
+  onDemoToggle,
+  onOverview,
 }: {
   settings: SimulationSettings
   blackHoleCount: number
   placementMode: boolean
   chaosActive: boolean
+  demoActive: boolean
   onChange: (settings: SimulationSettings) => void
   onReset: () => void
   onSpawn: () => void
   onCreateBlackHole: () => void
   onPlacementToggle: () => void
   onChaosToggle: () => void
+  onDemoToggle: () => void
+  onOverview: () => void
 }) {
   const setSetting = <K extends keyof SimulationSettings>(
     key: K,
@@ -752,6 +903,12 @@ function PhysicsPanel({
           <h2>Physics</h2>
         </div>
         <span className="panel-indicator" aria-hidden="true" />
+      </div>
+      <div className="camera-actions">
+        <button type="button" onClick={onOverview}>RETURN TO OVERVIEW</button>
+        <button type="button" className={demoActive ? 'is-active' : ''} onClick={onDemoToggle}>
+          {demoActive ? '■ STOP DEMO' : '▶ DEMO MODE · 66 SEC'}
+        </button>
       </div>
 
       <div className="control-group">
@@ -865,6 +1022,7 @@ function PhysicsPanel({
 function ObjectPanel({
   snapshot,
   onImpulse,
+  onFocus,
   onDisintegrate,
   onDuplicate,
   onMassChange,
@@ -874,6 +1032,7 @@ function ObjectPanel({
 }: {
   snapshot: PlanetSnapshot | null
   onImpulse: () => void
+  onFocus: () => void
   onDisintegrate: () => void
   onDuplicate: () => void
   onMassChange: (direction: -1 | 1) => void
@@ -917,6 +1076,7 @@ function ObjectPanel({
           </>
         )}
       </dl>
+      <button type="button" className="focus-button" onClick={onFocus}>FOCUS CAMERA ON OBJECT</button>
       {snapshot.kind === 'planet' ? (
         <>
           <div className="object-actions">
@@ -993,9 +1153,17 @@ function CommandConsole({
           <span className="panel-eyebrow">REALITY.EXE / INPUT</span>
           <h2>Command Console</h2>
         </div>
-        <span className={`console-status ${lastResult ? (lastResult.success ? 'is-success' : 'is-error') : ''}`}>
+        <span
+          className={`console-status ${lastResult
+            ? lastResult.warning
+              ? 'is-warning'
+              : lastResult.success
+                ? 'is-success'
+                : 'is-error'
+            : ''}`}
+        >
           <span aria-hidden="true" />
-          {lastResult ? (lastResult.success ? 'EXECUTED' : 'ERROR') : 'READY'}
+          {lastResult ? (lastResult.warning ? 'WARNING' : lastResult.success ? 'EXECUTED' : 'ERROR') : 'READY'}
         </span>
       </div>
       <form className="console-form" onSubmit={submit}>
@@ -1015,12 +1183,21 @@ function CommandConsole({
           </button>
         ))}
       </div>
+      <div className="history-toolbar">
+        <span>EVENT LOG · {history.length}/{MAX_COMMAND_HISTORY}</span>
+        <button type="button" onClick={() => setHistory([])} disabled={history.length === 0}>
+          CLEAR
+        </button>
+      </div>
       <div className="command-history" aria-label="Command history" aria-live="polite">
         {history.length === 0 ? (
           <p className="console-empty">Awaiting command input…</p>
         ) : (
           history.map((entry) => (
-            <article key={entry.id} className={`command-entry ${entry.success ? 'is-success' : 'is-error'}`}>
+            <article
+              key={entry.id}
+              className={`command-entry ${entry.warning ? 'is-warning' : entry.success ? 'is-success' : 'is-error'}`}
+            >
               <p className="command-entry-input"><span>&gt;</span> {entry.command}</p>
               <p className="command-entry-result">{entry.message}</p>
             </article>
@@ -1043,8 +1220,15 @@ function App() {
   const [bodyVersion, setBodyVersion] = useState(0)
   const [effectsVersion, setEffectsVersion] = useState(0)
   const [chaosActive, setChaosActive] = useState(false)
+  const [demoActive, setDemoActive] = useState(false)
+  const [demoCaption, setDemoCaption] = useState('')
   const [placementMode, setPlacementMode] = useState(false)
   const [message, setMessage] = useState('')
+  const [cameraRequest, setCameraRequest] = useState<CameraRequest>({ version: 0, objectId: null })
+  const demoCommandRef = useRef<(text: string) => CommandResult>(() => ({
+    success: false,
+    message: 'Demo command system is not ready.',
+  }))
   const effects = useRef<EffectStore>({ effects: [], nextId: 1 })
 
   const changeSettings = (next: SimulationSettings) => {
@@ -1061,8 +1245,13 @@ function App() {
     setBodyVersion((version) => version + 1)
     refreshWorld()
   }
-  const addEffect = (position: Vector3Tuple, count?: number) => {
-    addBurst(effects.current, position, count)
+  const addEffect = (
+    position: Vector3Tuple,
+    count?: number,
+    velocity?: Vector3Tuple,
+    color?: string,
+  ) => {
+    addBurst(effects.current, position, count, velocity, color)
     setEffectsVersion((version) => version + 1)
   }
 
@@ -1134,7 +1323,7 @@ function App() {
     const index = world.bodies.findIndex((body) => body.id === targetId)
     if (index < 0) return null
     const [body] = world.bodies.splice(index, 1)
-    addEffect(body.position, 620)
+    addEffect(body.position, 720, body.velocity, body.color)
     if (body.id === selectedIdRef.current) {
       changeSelection(null)
       setSnapshot(null)
@@ -1196,7 +1385,7 @@ function App() {
   }
 
   const handleCapturedBodies = (captured: PhysicsBody[]) => {
-    for (const body of captured) addEffect(body.position, 360)
+    for (const body of captured) addEffect(body.position, 360, body.velocity, body.color)
     if (captured.some((body) => body.id === selectedIdRef.current)) {
       changeSelection(null)
       setSnapshot(null)
@@ -1211,6 +1400,8 @@ function App() {
     setSnapshot(null)
     setPhysicsFault(false)
     setChaosActive(false)
+    setDemoActive(false)
+    setDemoCaption('')
     setPlacementMode(false)
     setMessage('')
     effects.current.effects.length = 0
@@ -1224,6 +1415,8 @@ function App() {
     changeSelection(null)
     setSnapshot(null)
     setChaosActive(false)
+    setDemoActive(false)
+    setDemoCaption('')
     setPlacementMode(false)
     refreshBodies()
     setPhysicsFault(true)
@@ -1279,7 +1472,11 @@ function App() {
         }
         setPlacementMode(true)
         setMessage('Click an open point in the universe to place the black hole.')
-        return { success: true, message: 'Placement armed. Click an open point in the universe.' }
+        return {
+          success: true,
+          warning: true,
+          message: 'Placement armed. Click an open point in the universe.',
+        }
       }
       case 'remove-black-hole': {
         if (!world.blackHoles.some((blackHole) => blackHole.id === selectedIdRef.current)) {
@@ -1352,7 +1549,11 @@ function App() {
         body.mass = Math.min(MAX_BODY_MASS, Math.max(MIN_BODY_MASS, requestedMass))
         if (body.id === selectedIdRef.current) setSnapshot(getSnapshot(body))
         const limitNote = body.mass !== requestedMass ? ' (clamped to the supported mass range)' : ''
-        return { success: true, message: `${body.name} mass is now ${body.mass.toFixed(3)} MU${limitNote}.` }
+        return {
+          success: true,
+          warning: body.mass !== requestedMass,
+          message: `${body.name} mass is now ${body.mass.toFixed(3)} MU${limitNote}.`,
+        }
       }
       case 'chaos':
         setChaosActive(command.active)
@@ -1367,8 +1568,56 @@ function App() {
     }
   }
 
+  demoCommandRef.current = executeCommand
+
+  useEffect(() => {
+    if (!demoActive) return
+    const runStep = (command: string, caption: string) => {
+      const result = demoCommandRef.current(command)
+      setDemoCaption(
+        result.success
+          ? `${caption} — ${result.message}`
+          : `${caption} — ACTION FAILED: ${result.message}`,
+      )
+    }
+    const timers = [
+      window.setTimeout(() => setDemoCaption('ACT 1 · THE UNIVERSE — baseline orbital motion established.'), 0),
+      window.setTimeout(() => runStep('REVERSE GRAVITY', 'ACT 2 · PHYSICS BREAKDOWN'), 8000),
+      window.setTimeout(() => runStep('RESTORE NORMAL GRAVITY', 'ACT 3 · GRAVITY RE-ENGAGED'), 16000),
+      window.setTimeout(() => runStep('CREATE A BLACK HOLE NEAR AURELIA', 'ACT 3 · SINGULARITY'), 19000),
+      window.setTimeout(() => runStep('DESTROY VESPER', 'ACT 4 · DESTRUCTION'), 32000),
+      window.setTimeout(() => runStep('ACTIVATE CHAOS MODE', 'ACT 5 · CHAOS'), 45000),
+      window.setTimeout(() => runStep('STOP CHAOS MODE', 'ACT 5 · CHAOS CONTAINED'), 57000),
+      window.setTimeout(() => {
+        const result = demoCommandRef.current('RESTORE THE UNIVERSE')
+        setDemoCaption(result.success ? 'ACT 6 · RESTORATION — the original universe is restored.' : result.message)
+        setDemoActive(false)
+      }, 66000),
+    ]
+    return () => timers.forEach((timer) => window.clearTimeout(timer))
+  }, [demoActive])
+
+  const startDemo = () => {
+    resetUniverse()
+    setDemoCaption('DEMO INITIALIZING…')
+    setDemoActive(true)
+  }
+
+  const stopDemo = () => {
+    resetUniverse()
+    setDemoCaption('DEMO STOPPED — the original universe is restored.')
+  }
+
+  const requestCameraFocus = (objectId: string | null) => {
+    setCameraRequest((request) => ({ version: request.version + 1, objectId }))
+  }
+
   return (
-    <main className="universe min-h-svh overflow-hidden bg-[#05070d] text-white" data-world-version={worldVersion} data-effects-version={effectsVersion}>
+    <main
+      className="universe min-h-svh overflow-hidden bg-[#05070d] text-white"
+      data-world-version={worldVersion}
+      data-effects-version={effectsVersion}
+    >
       <div className="universe-glow" aria-hidden="true" />
       <Canvas
         className="planet-canvas"
@@ -1382,6 +1631,7 @@ function App() {
             world={world}
             settingsRef={settingsRef}
             selectedId={selectedId}
+            cameraRequest={cameraRequest}
             bodyVersion={bodyVersion}
             effects={effects.current}
             worldVersion={worldVersion}
@@ -1427,6 +1677,7 @@ function App() {
         blackHoleCount={world.blackHoles.length}
         placementMode={placementMode}
         chaosActive={chaosActive}
+        demoActive={demoActive}
         onChange={changeSettings}
         onReset={resetUniverse}
         onSpawn={spawnNewPlanet}
@@ -1437,11 +1688,14 @@ function App() {
           setPlacementMode(false)
           setMessage('')
         }}
+        onDemoToggle={demoActive ? stopDemo : startDemo}
+        onOverview={() => requestCameraFocus(null)}
       />
       <CommandConsole onExecute={executeCommand} />
       <ObjectPanel
         snapshot={snapshot}
         onImpulse={applyImpulse}
+        onFocus={() => requestCameraFocus(snapshot?.id ?? null)}
         onDisintegrate={disintegrateSelectedPlanet}
         onDuplicate={duplicateSelectedPlanet}
         onMassChange={changeSelectedMass}
@@ -1452,10 +1706,17 @@ function App() {
           setSnapshot(null)
         }}
       />
+      {demoCaption && (
+        <div className="demo-banner" role="status" aria-live="polite">
+          <span className="demo-banner-label">{demoActive ? 'DEMO SEQUENCE' : 'DEMO STATUS'}</span>
+          <span>{demoCaption}</span>
+          {demoActive && <button type="button" onClick={stopDemo}>EXIT DEMO</button>}
+        </div>
+      )}
       {message && <div className="physics-warning" role="status">{message}</div>}
       {physicsFault && (
         <div className="physics-warning" role="alert">
-          Simulation paused after an unstable trajectory. Reset the universe to continue.
+          Numerical instability detected. The universe was restored to initial conditions and paused; review gravity and speed settings before resuming.
         </div>
       )}
     </main>

@@ -55,6 +55,8 @@ export const STAR_MASS = 120
 export const SOFTENING_LENGTH = 0.18
 export const MAX_POSITION = 200
 export const MAX_SPEED = 25
+export const MAX_ACCELERATION = 120
+export const MAX_GRAVITY_MULTIPLIER = 3
 export const MIN_BODY_MASS = 0.005
 export const MAX_BODY_MASS = 2
 export const MAX_BLACK_HOLES = 4
@@ -134,13 +136,39 @@ function cloneBody(body: PhysicsBody): PhysicsBody {
 
 function signedGravityStrength(settings: GravitySettings): number {
   if (settings.gravityDirection === 'zero') return 0
+  if (!Number.isFinite(settings.gravityMultiplier) || settings.gravityMultiplier < 0) return Number.NaN
   const direction = settings.gravityDirection === 'reverse' ? -1 : 1
-  return direction * settings.gravityMultiplier
+  return direction * Math.min(settings.gravityMultiplier, MAX_GRAVITY_MULTIPLIER)
 }
 
 export function calculateAccelerations(world: PhysicsWorld, settings: GravitySettings): boolean {
   const strength = signedGravityStrength(settings)
   const { bodies } = world
+  if (!Number.isFinite(strength)) return false
+  for (const body of bodies) {
+    const speed = Math.hypot(...body.velocity)
+    if (
+      !Number.isFinite(body.mass) ||
+      body.mass < MIN_BODY_MASS ||
+      body.mass > MAX_BODY_MASS ||
+      !Number.isFinite(speed) ||
+      speed > MAX_SPEED ||
+      body.position.some((component) => !Number.isFinite(component) || Math.abs(component) > MAX_POSITION)
+    ) {
+      return false
+    }
+  }
+  for (const blackHole of world.blackHoles) {
+    if (
+      !Number.isFinite(blackHole.mass) ||
+      blackHole.mass <= 0 ||
+      !Number.isFinite(blackHole.horizonRadius) ||
+      blackHole.horizonRadius <= 0 ||
+      blackHole.position.some((component) => !Number.isFinite(component) || Math.abs(component) > MAX_POSITION)
+    ) {
+      return false
+    }
+  }
 
   if (strength === 0) {
     for (const body of bodies) body.acceleration = [0, 0, 0]
@@ -192,9 +220,10 @@ export function calculateAccelerations(world: PhysicsWorld, settings: GravitySet
     }
   }
 
-  return bodies.every((body) =>
-    body.acceleration.every((component) => Number.isFinite(component)),
-  )
+  return bodies.every((body) => {
+    const acceleration = Math.hypot(...body.acceleration)
+    return Number.isFinite(acceleration) && acceleration <= MAX_ACCELERATION
+  })
 }
 
 export function advancePhysics(
@@ -202,6 +231,7 @@ export function advancePhysics(
   settings: GravitySettings,
   delta: number,
 ): boolean {
+  if (!Number.isFinite(delta) || delta <= 0 || delta > 0.05) return false
   if (!calculateAccelerations(world, settings)) return false
 
   const halfDeltaSquared = 0.5 * delta * delta
