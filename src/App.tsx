@@ -24,6 +24,7 @@ import type {
   Sprite,
   WebGLProgramParametersWithUniforms,
 } from 'three'
+import { JudgeLanding } from './JudgeLanding'
 import { normalizePlanetName, parseRealityCommand } from './commands'
 import type { RealityCommand } from './commands'
 import {
@@ -1209,6 +1210,7 @@ function CommandConsole({
 }
 
 function App() {
+  const [showLanding, setShowLanding] = useState(true)
   const [world] = useState(createPhysicsWorld)
   const [settings, setSettings] = useState(INITIAL_SETTINGS)
   const settingsRef = useRef(settings)
@@ -1658,9 +1660,19 @@ function App() {
             REALITY<span className="text-cyan-300">.EXE</span>
           </h1>
         </div>
-        <div className="status font-mono text-[9px] tracking-[0.18em] sm:text-[10px]">
-          <span className="status-light" aria-hidden="true" />
-          UNIVERSE ONLINE
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowLanding(true)}
+            className="judge-header-btn"
+            title="Open Judge Briefing & Controls Dossier"
+          >
+            <span>?</span> JUDGE GUIDE
+          </button>
+          <div className="status font-mono text-[9px] tracking-[0.18em] sm:text-[10px]">
+            <span className="status-light" aria-hidden="true" />
+            UNIVERSE ONLINE
+          </div>
         </div>
       </header>
 
@@ -1719,6 +1731,7 @@ function App() {
           Numerical instability detected. The universe was restored to initial conditions and paused; review gravity and speed settings before resuming.
         </div>
       )}
+      {showLanding && <JudgeLanding onEnter={() => setShowLanding(false)} />}
     </main>
   )
 }
