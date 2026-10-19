@@ -1642,6 +1642,10 @@ function App() {
     setCameraRequest((request) => ({ version: request.version + 1, objectId }))
   }
 
+  if (showLanding) {
+    return <LandingPage onEnter={enterUniverse} />
+  }
+
   return (
     <main
       className="universe min-h-svh overflow-hidden bg-[#05070d] text-white"
@@ -1759,7 +1763,6 @@ function App() {
           Numerical instability detected. The universe was restored to initial conditions and paused; review gravity and speed settings before resuming.
         </div>
       )}
-      {showLanding && <LandingPage onEnter={enterUniverse} />}
     </main>
   )
 }
