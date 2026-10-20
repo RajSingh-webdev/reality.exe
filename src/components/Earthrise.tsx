@@ -173,7 +173,7 @@ export function Earthrise({onEnter}: {onEnter?: () => void}) {
           <h1 className="font-display text-hero text-white [text-shadow:0_4px_40px_rgb(0_0_0/0.5)]" style={{marginRight: '-0.24em'}}>
             {hero.title}
           </h1>
-          <p className="mt-4 font-mono text-label text-regolith/80 uppercase">{hero.kicker}</p>
+          <p className="mt-4 font-mono text-label text-white uppercase">{hero.kicker}</p>
           {onEnter && (
             <div className="mt-6 pointer-events-auto">
               <button
