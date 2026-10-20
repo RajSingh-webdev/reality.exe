@@ -24,6 +24,10 @@ export function startScroll(reducedMotion: boolean): () => void {
   };
   raf = requestAnimationFrame(loop);
 
+  if (typeof window !== 'undefined' && window.location.hash && window.location.hash !== '#top') {
+    setTimeout(() => scrollToHash(window.location.hash), 150);
+  }
+
   return () => {
     cancelAnimationFrame(raf);
     lenis?.destroy();

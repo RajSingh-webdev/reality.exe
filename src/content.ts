@@ -12,7 +12,6 @@ export const brand = {
 export const nav = [
   {label: 'Capabilities', href: '#capabilities'},
   {label: 'Trajectory', href: '#trajectory'},
-  {label: 'Systems', href: '#missions'},
   {label: 'Feedback', href: '#feedback'},
 ];
 
@@ -83,17 +82,6 @@ export const trajectory = {
     {day: 'Phase 1', title: 'Trans-lunar injection', body: 'A six-minute burn and the craft enters transfer trajectory. No turning back for three days.'},
     {day: 'Phase 2', title: 'Lunar orbit insertion', body: 'The engine fires behind the Moon, entering the gravitational capture horizon.'},
     {day: 'Phase 3', title: 'Descent', body: 'Twelve minutes from orbit to touchdown in the dust of Tranquillity.'},
-  ],
-};
-
-export const missions = {
-  eyebrow: 'Simulation Modes',
-  heading: 'Three ways to command reality.',
-  note: 'Deterministic physics sandbox — zero external API latency.',
-  items: [
-    {name: 'Observer', days: 6, lines: ['Passive N-body orbit telemetry', 'Real-time velocity vectors', 'Dynamic camera tracking'], cta: 'Initialize Observer'},
-    {name: 'Architect', days: 10, lines: ['Natural-language command console', 'Planet spawner & mass changer', 'Tangential orbital boosters'], cta: 'Initialize Architect', featured: true},
-    {name: 'Singularity', days: 28, lines: ['Relativistic black hole placement', 'Matter disintegration particle engine', 'Chaos mode perturbation'], cta: 'Initialize Singularity'},
   ],
 };
 

@@ -2,7 +2,6 @@ import {useEffect} from 'react';
 import {Footer, Header} from './components/Chrome';
 import {Earthrise} from './components/Earthrise';
 import {MissionLog} from './components/MissionLog';
-import {Missions} from './components/Missions';
 import {Feedback} from './components/Reserve';
 import {Trajectory} from './components/Trajectory';
 import {useReducedMotion} from './hooks/useReducedMotion';
@@ -40,7 +39,6 @@ export function LandingPage({onEnter}: LandingPageProps) {
         <Earthrise onEnter={onEnter} />
         <MissionLog />
         <Trajectory />
-        <Missions onEnter={onEnter} />
         <Feedback onEnter={onEnter} />
       </main>
       <Footer />

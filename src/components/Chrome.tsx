@@ -10,12 +10,14 @@ function go(e: MouseEvent<HTMLAnchorElement>, then?: () => void) {
   scrollToHash(hash);
 }
 
-/** A crescent: the mark. */
-function Crescent({className = ''}: {className?: string}) {
+/** Reality.exe Singularity Mark: Project Logo */
+function Logo({className = 'h-7 w-auto'}: {className?: string}) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={className}>
-      <path d="M15.5 3.2A9 9 0 1 0 20.8 16 7.2 7.2 0 0 1 15.5 3.2Z" fill="currentColor" />
-    </svg>
+    <img
+      src="/logo.png"
+      alt={`${brand.name} logo`}
+      className={`object-contain mix-blend-screen shrink-0 ${className}`}
+    />
   );
 }
 
@@ -25,7 +27,7 @@ export function Header({onEnter}: {onEnter?: () => void}) {
     <header className="fixed inset-x-0 top-0 z-50 text-white">
       <div className="flex items-center justify-between px-4 pt-4 sm:px-6 sm:pt-5 md:px-[3vw]">
         <a href="#top" onClick={(e) => go(e)} className="flex items-center gap-2.5" aria-label={`${brand.name} — back to top`}>
-          <Crescent className="size-5 text-earth" />
+          <Logo className="h-7 w-auto" />
           <span className="font-display text-[0.9375rem] tracking-[0.36em]">{brand.wordmark}</span>
         </a>
         <nav aria-label="Primary" className="hidden items-center gap-8 md:flex">
@@ -81,7 +83,7 @@ export function Footer() {
     <footer className="border-t border-white/10 bg-void px-4 py-8 sm:px-6 md:px-[6vw]">
       <div className="flex flex-col gap-4 font-mono text-label text-regolith/50 uppercase md:flex-row md:items-center md:justify-between">
         <span className="flex items-center gap-2.5 text-white/80">
-          <Crescent className="size-4 text-earth" />
+          <Logo className="h-6 w-auto" />
           {brand.wordmark} · Interactive 3D Simulator
         </span>
         <span>© {new Date().getFullYear()} · N-Body Newtonian Engine</span>
